@@ -65,6 +65,7 @@ export class LocalVectorKnowledgeBase {
   private chunks: DocumentChunk[] = [];
   private isIndexed: boolean = false;
   private readonly docsPath: string;
+  private initializationPromise: Promise<void>;
 
   constructor() {
     console.log('🧠 [RAG] ====================================');
@@ -80,10 +81,18 @@ export class LocalVectorKnowledgeBase {
     console.log(`📁 [RAG] Doc path: ${this.docsPath}`);
     console.log(`🔑 [RAG] OpenAI Key present: ${process.env.OPENAI_API_KEY ? 'YES ' : 'NO ⚠️'}`);
     
-    // Trigger async indexing (Fire & Forget)
-    this.indexDocuments().catch(err => {
+    // Store initialization promise so search() can await it
+    this.initializationPromise = this.indexDocuments().catch(err => {
         console.error('❌ [RAG Init Error]', err);
     });
+  }
+
+  /**
+   * Wait for initialization to complete (useful for first requests)
+   */
+  async waitForReady(): Promise<boolean> {
+    await this.initializationPromise;
+    return this.isIndexed;
   }
 
   /**
@@ -180,18 +189,21 @@ export class LocalVectorKnowledgeBase {
     console.log('');
     console.log('🔍 [RAG] ========== SEARCH REQUEST ==========');
     console.log(`🔍 [RAG] Query: "${query}"`);
-    console.log(`📊 [RAG] Index Status: ${this.isIndexed ? 'READY' : 'NOT READY'}`);
-    console.log(`📦 [RAG] Chunks in memory: ${this.chunks.length}`);
-    console.log(`📦 [RAG] Chunks with vectors: ${this.chunks.filter(c => c.vector).length}`);
     
+    // Wait for indexing to complete if not ready
     if (!this.isIndexed) {
-        console.warn('⏳ [RAG] System is still indexing. Waiting 500ms...');
-        await new Promise(r => setTimeout(r, 500));
+        console.warn('⏳ [RAG] Indexing in progress. Waiting for completion...');
+        await this.initializationPromise;
         if (!this.isIndexed) {
-            console.warn('⚠️ [RAG] Still not ready. Returning empty results.');
+            console.warn('⚠️ [RAG] Indexing failed. Returning empty results.');
             return [];
         }
+        console.log('✅ [RAG] Indexing complete. Proceeding with search.');
     }
+    
+    console.log(`📊 [RAG] Index Status: READY`);
+    console.log(`📦 [RAG] Chunks in memory: ${this.chunks.length}`);
+    console.log(`📦 [RAG] Chunks with vectors: ${this.chunks.filter(c => c.vector).length}`);
 
     try {
         console.log('📡 [RAG] Embedding query via OpenAI...');

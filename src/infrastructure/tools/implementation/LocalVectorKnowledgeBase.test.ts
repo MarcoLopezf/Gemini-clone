@@ -146,15 +146,18 @@ describe('LocalVectorKnowledgeBase - Real RAG with OpenAI Embeddings', () => {
     });
 
     it('should handle search when still indexing gracefully', async () => {
+      // All similar vectors for consistent results
       mockEmbed.mockResolvedValue({ embedding: createMockVector(1) });
       
       knowledgeBase = new LocalVectorKnowledgeBase();
       
-      // Immediately search without waiting for indexing
+      // Search immediately - should wait for indexing to complete
       const results = await knowledgeBase.search('test query');
       
-      // Should handle gracefully (empty array or wait and return)
+      // With proper await, search should now return results (not fail or return empty)
       expect(Array.isArray(results)).toBe(true);
+      // Since all vectors are similar and index completes, we should get results
+      expect(results.length).toBeGreaterThan(0);
     });
   });
 
