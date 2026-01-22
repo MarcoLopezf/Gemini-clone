@@ -32,7 +32,8 @@ export class GenkitAgent implements GenerativeAgent {
     private readonly webSearch?: WebSearch,
     private readonly knowledgeBase?: KnowledgeBase
   ) {
-    // Define tools once upon initialization
+
+    // Define tools with real implementation
     if (this.webSearch) {
       try {
         this.tools.push(ai.defineTool({
@@ -40,9 +41,14 @@ export class GenkitAgent implements GenerativeAgent {
           description: 'Finds current information from the internet.',
           inputSchema: z.object({ query: z.string() }),
           outputSchema: z.object({ result: z.unknown() }),
-        }, async () => ({ result: '' }))); 
+        }, async (input) => {
+            console.log(`🔍 [Agent] Executing Web Search for: ${input.query}`);
+            if (!this.webSearch) return { result: 'Search tool not verified available' };
+            const res = await this.webSearch.search(input.query);
+            return { result: res.results };
+        })); 
       } catch {
-        // Ignore if already registered (hot reload safety)
+        // Ignore
       }
     }
     if (this.knowledgeBase) {
@@ -52,7 +58,12 @@ export class GenkitAgent implements GenerativeAgent {
           description: 'Access internal knowledge base. Use this for queries about RAG (Retrieval Augmented Generation), project architecture, technical docs, and company policies.',
           inputSchema: z.object({ query: z.string() }),
           outputSchema: z.object({ result: z.unknown() }),
-        }, async () => ({ result: '' })));
+        }, async (input) => {
+             console.log(`📚 [Agent] Executing RAG Search with query: "${input.query}"`);
+             if (!this.knowledgeBase) return { result: 'KB tool not available' };
+             const res = await this.knowledgeBase.search(input.query);
+             return { result: res };
+        }));
       } catch {
           // Ignore
       }
@@ -63,24 +74,14 @@ export class GenkitAgent implements GenerativeAgent {
     const systemPrompt = this.loadSystemPrompt();
     
     // Determine Model ID
-    let targetModel = 'googleai/gemini-2.5-flash'; // Default
+    let targetModel = 'googleai/gemini-2.5-flash'; 
     if (options?.modelId === 'gpt-5-nano') {
-        // Map pseudo-model to real OpenAI model for now, or use custom if plugin supports it
-        // Assuming 'openai/gpt-4o' as the "nano" equivalent for this demo or actual model if available
         targetModel = 'openai/gpt-4o'; 
     } else if (options?.modelId) {
         targetModel = options.modelId;
     }
 
-    // ... (rest of logic) ...
-    // ...
-    
-    // MAIN LOOP logic needs to use ai.generate with specific model
-    // However, ai.generate usually uses the configured default model unless overridden?
-    // Genkit v0.5+ / v1.x usually supports passing 'model' in generate options.
-    
     // Convert history for Genkit
-    // ... existing conversion code ...
     let messages = history.map((msg) => ({
       role: (msg.role === 'model' ? 'model' : 'user') as 'model' | 'user',
       content: [{ text: msg.content }],
@@ -94,27 +95,90 @@ export class GenkitAgent implements GenerativeAgent {
     }
     
     const tools = this.tools;
+    console.log(`Tools available ${tools.length}`);
+
+    // Call Genkit generate. 
+    // Since we provided implementations in defineTool, Genkit should handle execution.
+    // However, ai.generate() is typically single-turn in many SDKs unless configured as a chat session.
+    // If it's single turn, it will return the tool request, and we MUST run it (but we already bound the implementation?).
+    // Actually, if we bind implementation, Genkit's 'generate' function (if it supports it) will run the tool and loop?
+    // Let's assume standard Genkit behavior: provided tools are executed.
+    // BUT, we need to handle the loop if Genkit returns 'toolRequests' even after execution?
+    // Simplest approach: Try to let Genkit handle it. If it returns text, good.
+    // If it returns toolRequests, it means it didn't execute automatically.
+    
+    // We will keep a loop to support manual multi-turn if Genkit doesn't auto-loop,
+    // BUT we rely on the defineTool implementation.
+    // If Genkit executes internally, it won't return toolRequests in the output that require action, or it will return the final text.
+    
+    // Note: The Genkit documentation suggests using `ai.chat(...)` for multi-turn conversations with history.
+    // Since we are using `ai.generate` which is lower level, let's stick to the manual loop just in case,
+    // BUT REMOVE THE MANUAL EXECUTION LOGIC and rely on Genkit finding the implementation?
+    // Actually, `ai.generate` doesn't know about `this.webSearch` unless we passed the implementation to `defineTool`.
+    // Now that we passed it, `ai.generate` MIGHT execute it.
+    
+    // Let's modify the loop to checks:
+    // 1. Generate
+    // 2. If toolRequests: 
+    //    - If Genkit ran it, we might see toolResponse in output? No.
+    //    - If Genkit DID NOT run it (single turn), we must run it.
+    //      We can call the tool implementation directly using the toolName mapping.
+    //      OR, since we bound the implementation, maybe we can just call `await request.tool.execute(input)`?
+    //      The `toolRequests` object in response might not have the execute method attached.
+    
+    // To be safe and ensure it works:
+    // I will use a manual loop that invokes the tools MANUALLY using the same logic as before,
+    // BUT I will ALSO keep the implementation in defineTool for correctness.
+    // Wait, if I have implementation in defineTool AND manual loop, is it double execution?
+    // If Genkit executes, it returns final text. Handled.
+    // If Genkit DOES NOT execute, it returns toolRequests. Handled by manual loop.
+    // So the manual loop is safe?
+    // Yes, unless Genkit executes AND returns toolRequests (unlikely).
+    
+    // Refactoring to keep the manual loop but with the implementation usage via reference if possible, 
+    // or just keep manual logic as fallback.
+    // The previous manual logic was: `this.webSearch.search(...)`
+    // That works fine.
+    // The PROBLEM was `defineTool` had dummy implementation.
+    // If Genkit TRIED to run it, it got empty string.
+    
+    // So, updating `defineTool` to have REAL implementation is the fix.
+    // And I will leave the manual loop as is (it handles the case where Genkit hands back control).
+    // Wait, if Genkit runs the tool (because I added implementation), it will consume the request and return the next thing (Text or another Tool).
+    // So the manual loop condition `if (toolRequests && toolRequests.length > 0)` will effectively handle the "Genkit handed back control" case.
+    // If Genkit did the work, `toolRequests` will be empty (or final).
+    
     const currentMessages = [...messages];
     
     while (true) {
         const response = await ai.generate({
-            model: targetModel, // Override default model
+            model: targetModel,
             messages: currentMessages,
-            // We pass tool definitions so the model knows they exist
             tools: tools.length > 0 ? tools : undefined,
         });
 
-        // Debug Log
-        const toolRequests = response.output?.toolRequests;
+        // DEBUGGING: Log the raw response before accessing output
+        console.log(`🤖 [Genkit] Raw Response Text:`, response.text);
+        console.log(`🤖 [Genkit] Raw Response Keys:`, Object.keys(response));
+        
+        let toolRequests;
+        try {
+            // Accessing output might trigger parsing
+            toolRequests = response.output?.toolRequests;
+        } catch (err) {
+            console.error('❌ [Genkit] Error parsing response output:', err);
+            console.error('❌ [Genkit] Offending Text:', response.text);
+            // If parsing fails, treat as no tool requests (just text)
+            toolRequests = null;
+        }
         console.log(`🤖 [Genkit] Response generated. Content: "${response.text?.substring(0, 50)}..."`);
         console.log(`🤖 [Genkit] Tool Requests present: ${toolRequests ? toolRequests.length : 0}`);
         
         if (toolRequests && toolRequests.length > 0) {
-            // Append model's tool request message to history
-            // Genkit response object usually has a way to get the message part
-            // For manual loop, we construct the 'model' message with tool calls
-            // Add model's tool request message to history
-            // We need to add the MODEL's tool request first
+            // Genkit returned a tool request. This means it did NOT auto-execute (single turn behavior).
+            // We must execute it and feed back the result.
+             
+            // We construct the model message first
             currentMessages.push({
                role: 'model',
                content: [
@@ -125,36 +189,30 @@ export class GenkitAgent implements GenerativeAgent {
                      ref: toolRequests[0].ref,
                    },
                  },
-               ] as unknown as [{ text: string }], // Force cast to satisfy simplified Message type
-            } as unknown as { role: 'model'; content: [{ text: string }] }); // Genkit Message type workaround
+               ] as unknown as [{ text: string }],
+            } as unknown as { role: 'model'; content: [{ text: string }] });
             
-            const toolRequest = toolRequests[0]; // Handle first tool request
-            console.log(`🛠️ [Agent] Intercepted Tool Request: ${toolRequest.toolName} with input:`, toolRequest.input);
+            const toolRequest = toolRequests[0];
+            console.log(`🛠️ [Agent] Handling Tool Request: ${toolRequest.toolName}`);
             
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // Execute the tool logic (we can use the implementation map or just direct calls like before)
+            // Even though we defined the tool with implementation, we can call our ports directly here for the manual loop.
             let toolResultContent: any = { result: [] };
 
             if (toolRequest.toolName === 'web_search' && this.webSearch) {
-                console.log(`🔍 [Agent] Executing Web Search...`);
                 const result = await this.webSearch.search(toolRequest.input.query as string);
-                console.log(`✅ [Agent] Web Search Result Count: ${result.results.length}`);
                 toolResultContent = { result: result.results ?? [] };
             } else if (toolRequest.toolName === 'knowledge_base' && this.knowledgeBase) {
-                console.log(`📚 [Agent] Executing RAG Search with query: "${toolRequest.input.query}"`);
                 const result = await this.knowledgeBase.search(toolRequest.input.query as string);
-                console.log(`✅ [Agent] RAG Result Count: ${result.length}`);
-                if (result.length > 0) {
-                     console.log(`📄 [Agent] First result sample: ${JSON.stringify(result[0]).substring(0, 100)}...`);
-                }
                 toolResultContent = { result: result ?? [] };
             }
             
-            // Fallback for empty/null content
-            if (!toolResultContent || !toolResultContent.result || (Array.isArray(toolResultContent.result) && toolResultContent.result.length === 0)) {
-                toolResultContent = { result: "No information found for this query." };
+             // Fallback
+            if (!toolResultContent || !toolResultContent.result) {
+                 toolResultContent = { result: "No information found." };
             }
 
-            // Then the TOOL response
+            // Tool Response
             currentMessages.push({
                role: 'tool' as 'user', 
                content: [
@@ -168,11 +226,9 @@ export class GenkitAgent implements GenerativeAgent {
                ] as unknown as [{ text: string }],
            } as unknown as { role: 'user'; content: [{ text: string }] });
            
-           // Loop continues to call ai.generate again with updated history
            continue;
         }
 
-        // If no tool requests, return the text
         return response.text;
     }
   }

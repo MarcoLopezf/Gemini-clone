@@ -10,78 +10,49 @@ import {
   WebSearchResponse,
   WebSearchResult,
 } from '../../../core/domain/ports/WebSearch';
-
-interface TavilyResult {
-  title: string;
-  url: string;
-  content: string;
-  score: number;
-  published_date?: string;
-}
-
-interface TavilyResponse {
-  results: TavilyResult[];
-  answer?: string;
-  query: string;
-}
+import { TavilyClient, tavily } from '@tavily/core';
 
 export class TavilySearchProvider implements WebSearch {
-  private readonly baseUrl = 'https://api.tavily.com/search';
+  private readonly client: TavilyClient;
 
-  constructor(private readonly apiKey: string) {}
+  constructor(apiKey: string) {
+    this.client = tavily({ apiKey });
+  }
 
   async search(
     query: string,
     options?: WebSearchOptions
   ): Promise<WebSearchResponse> {
     try {
-      const body = {
-        api_key: this.apiKey,
-        query: query,
-        search_depth: options?.searchDepth ?? 'basic',
-        include_answer: options?.includeAnswer ?? false,
-        include_domains: options?.includeDomains,
-        exclude_domains: options?.excludeDomains,
-        include_raw_content: options?.includeRawContent,
-        limit: options?.limit ?? 5,
-      };
-
-      const response = await fetch(this.baseUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
+      const response = await this.client.search(query, {
+        searchDepth: options?.searchDepth === 'advanced' ? 'advanced' : 'basic',
+        maxResults: options?.limit ?? 5,
+        includeAnswer: options?.includeAnswer ?? false,
+        includeRawContent: false,
+        includeDomains: options?.includeDomains,
+        excludeDomains: options?.excludeDomains,
+        includeImages: false, // Not using images for now
       });
 
-      if (!response.ok) {
-        throw new Error(`Tavily API error: ${response.statusText}`);
-      }
+      // Map SDK response to our domain WebSearchResponse
+      // SDK response structure is { results: [...], answer: string, query: string, ... }
+      
+      const results: WebSearchResult[] = response.results.map((item: any) => ({
+        title: item.title,
+        url: item.url,
+        content: item.content,
+        score: item.score,
+        publishedDate: item.published_date,
+      }));
 
-      const data = (await response.json()) as TavilyResponse;
-
-      return this.mapResponse(data);
+      return {
+        results,
+        answer: response.answer,
+        query: response.query,
+      };
     } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error('Unknown error during Tavily search');
+      console.error('[TavilySearchProvider] Error searching:', error);
+      throw error;
     }
-  }
-
-  private mapResponse(data: TavilyResponse): WebSearchResponse {
-    const results: WebSearchResult[] = data.results.map((item) => ({
-      title: item.title,
-      url: item.url,
-      content: item.content,
-      score: item.score,
-      publishedDate: item.published_date,
-    }));
-
-    return {
-      results,
-      answer: data.answer,
-      query: data.query,
-    };
   }
 }

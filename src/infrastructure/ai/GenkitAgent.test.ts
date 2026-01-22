@@ -6,19 +6,23 @@ import { KnowledgeBase } from '../../core/domain/ports/KnowledgeBase';
 import fs from 'fs';
 
 // Mock dependencies
-const { mockGenerate } = vi.hoisted(() => {
-  return { mockGenerate: vi.fn() };
+const { mockGenerate, mockDefineTool } = vi.hoisted(() => {
+  return { 
+    mockGenerate: vi.fn(),
+    mockDefineTool: vi.fn((config, fn) => ({ ...config, fn })) // Mock to return config + fn for inspection
+  };
 });
 
 vi.mock('genkit', () => ({
   genkit: () => ({
     generate: mockGenerate,
-    defineTool: vi.fn(),
+    defineTool: mockDefineTool,
   }),
   z: {
     object: () => ({}),
     string: () => ({}),
     number: () => ({}),
+    unknown: () => ({}),
   },
 }));
 
@@ -38,7 +42,7 @@ describe('GenkitAgent', () => {
   let mockKnowledgeBase: KnowledgeBase;
 
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
 
     // Setup FS mock return value
     vi.mocked(fs.readFileSync).mockReturnValue('You are a helpful assistant.');
@@ -56,6 +60,31 @@ describe('GenkitAgent', () => {
 
     // Instantiate with dependencies
     agent = new GenkitAgent(mockWebSearch, mockKnowledgeBase);
+  });
+
+  describe('constructor', () => {
+    it('should register web_search tool with correct implementation', async () => {
+      // The constructor is called in beforeEach, so mockDefineTool should have been called
+      expect(mockDefineTool).toHaveBeenCalled();
+      
+      // Find the web_search tool call
+      const webSearchCall = mockDefineTool.mock.calls.find(call => call[0].name === 'web_search');
+      expect(webSearchCall).toBeDefined();
+      
+      // We can also verify that the passed implementation function calls the port
+      // We simulated the defineTool returning the object, so we can't easily run it from here unless we grabbed it from the mock args.
+      // But we can verify it was registered.
+      
+      const implFn = webSearchCall![1]; // The second argument is the implementation function
+      
+      // Mock the return value
+      vi.mocked(mockWebSearch.search).mockResolvedValue({ results: [], query: 'test' });
+
+      // Execute the implementation function to verify it calls the port
+      const result = await implFn({ query: 'test' });
+      expect(mockWebSearch.search).toHaveBeenCalledWith('test');
+      expect(result).toHaveProperty('result');
+    });
   });
 
   describe('generateResponse', () => {
