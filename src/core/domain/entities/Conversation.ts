@@ -5,6 +5,7 @@
  */
 
 import { Message, MessageRole } from './Message';
+import { ToolCall } from '../value-objects/ToolCall';
 
 export class Conversation {
   readonly id: string;
@@ -22,6 +23,21 @@ export class Conversation {
     }
 
     this.messages.push({ role, content: trimmedContent });
+  }
+
+  addMessageWithToolCalls(
+    role: MessageRole,
+    content: string,
+    toolCalls: ToolCall[]
+  ): void {
+    const trimmedContent = content.trim();
+
+    // Message is valid if it has content OR toolCalls (not both empty)
+    if (trimmedContent.length === 0 && toolCalls.length === 0) {
+      throw new Error('Message must have content or tool calls');
+    }
+
+    this.messages.push({ role, content: trimmedContent, toolCalls });
   }
 
   getHistory(): Message[] {

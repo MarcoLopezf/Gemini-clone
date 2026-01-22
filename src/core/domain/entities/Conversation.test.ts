@@ -95,4 +95,27 @@ describe('Conversation', () => {
       );
     });
   });
+
+  describe('tool calls support', () => {
+    it('should allow a message to have tool calls without text content', () => {
+      const conversation = new Conversation();
+
+      const toolCall = {
+        id: 'call_1',
+        name: 'search',
+        args: { query: 'weather today' },
+      };
+
+      // This should NOT throw even with empty content, because we have toolCalls
+      conversation.addMessageWithToolCalls('model', '', [toolCall]);
+
+      const history = conversation.getHistory();
+      expect(history).toHaveLength(1);
+      expect(history[0].role).toBe('model');
+      expect(history[0].content).toBe('');
+      expect(history[0].toolCalls).toBeDefined();
+      expect(history[0].toolCalls).toHaveLength(1);
+      expect(history[0].toolCalls![0].name).toBe('search');
+    });
+  });
 });
