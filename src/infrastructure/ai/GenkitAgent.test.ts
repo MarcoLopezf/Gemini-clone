@@ -53,9 +53,6 @@ describe('GenkitAgent', () => {
     };
     mockKnowledgeBase = {
       search: vi.fn(),
-      index: vi.fn(),
-      remove: vi.fn(),
-      clear: vi.fn(),
     };
 
     // Instantiate with dependencies
@@ -149,9 +146,9 @@ describe('GenkitAgent', () => {
         }
       });
 
-      // Mock Step 2: KB Search
+      // Mock Step 2: KB Search - returns string[] now
       vi.mocked(mockKnowledgeBase.search).mockResolvedValue([
-        { document: { id: '1', content: 'RAG is...' }, score: 0.9 }
+        'RAG is Retrieval Augmented Generation. It combines retrieval and generation.'
       ]);
 
       // Mock Step 3: Final Answer

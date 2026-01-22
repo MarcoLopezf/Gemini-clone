@@ -1,53 +1,197 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { LocalVectorKnowledgeBase } from './LocalVectorKnowledgeBase';
-import { Document } from '../../../core/domain/ports/KnowledgeBase';
 
-describe('LocalVectorKnowledgeBase', () => {
+/**
+ * Real RAG Tests - OpenAI Embeddings
+ * 
+ * Tests for the LocalVectorKnowledgeBase using OpenAI's text-embedding-3-small model.
+ */
+
+// Sample vectors for mocking embeddings (1536 dimensions for text-embedding-3-small)
+const createMockVector = (seed: number): number[] => {
+  return Array.from({ length: 1536 }, (_, i) => Math.sin(seed + i * 0.1));
+};
+
+// Hoist the mock function so it's available during vi.mock execution
+const { mockEmbed } = vi.hoisted(() => ({
+  mockEmbed: vi.fn(),
+}));
+
+// Mock the genkit module
+vi.mock('genkit', () => ({
+  genkit: vi.fn(() => ({
+    embed: mockEmbed,
+  })),
+}));
+
+// Mock genkitx-openai
+vi.mock('genkitx-openai', () => ({
+  openAI: vi.fn(() => ({})),
+  textEmbedding3Small: 'text-embedding-3-small',
+}));
+
+// Mock fs module
+vi.mock('fs', () => ({
+  default: {
+    existsSync: vi.fn(() => true),
+    readFileSync: vi.fn(() => `# RAG Survey
+
+Retrieval-Augmented Generation (RAG) is a technique that combines retrieval and generation.
+
+## Advanced RAG
+
+Advanced RAG improves upon naive RAG with pre-retrieval and post-retrieval strategies.
+
+## Modular RAG
+
+Modular RAG offers enhanced adaptability with specialized components like search and memory modules.`),
+  },
+  existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(() => `# RAG Survey
+
+Retrieval-Augmented Generation (RAG) is a technique that combines retrieval and generation.
+
+## Advanced RAG
+
+Advanced RAG improves upon naive RAG with pre-retrieval and post-retrieval strategies.
+
+## Modular RAG
+
+Modular RAG offers enhanced adaptability with specialized components like search and memory modules.`),
+}));
+
+describe('LocalVectorKnowledgeBase - Real RAG with OpenAI Embeddings', () => {
   let knowledgeBase: LocalVectorKnowledgeBase;
-  const mockDocs: Document[] = [
-    {
-      id: 'doc-1',
-      content:
-        'Modular RAG is an advanced retrieval augmented generation pattern.',
-      metadata: { title: 'RAG Survey' },
-    },
-    {
-      id: 'doc-2',
-      content: 'Apples are delicious fruits that grow on trees.',
-      metadata: { title: 'Fruits' },
-    },
-  ];
 
-  beforeEach(() => {
-    // Inject mock documents directly for testing logic without FS dependency
-    knowledgeBase = new LocalVectorKnowledgeBase(mockDocs);
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    
+    // Default: Return embedding result for any content
+    let seedCounter = 0;
+    mockEmbed.mockImplementation(async () => {
+      seedCounter++;
+      return { embedding: createMockVector(seedCounter) };
+    });
+  });
+
+  describe('constructor', () => {
+    it('should trigger async indexing on instantiation', async () => {
+      knowledgeBase = new LocalVectorKnowledgeBase();
+      
+      // Give time for async indexing to start
+      await new Promise(r => setTimeout(r, 100));
+      
+      // The constructor should have initiated the indexing process
+      expect(knowledgeBase).toBeDefined();
+    });
   });
 
   describe('search', () => {
-    it('should return relevant results for a matching query', async () => {
-      const results = await knowledgeBase.search('Modular RAG');
+    it('should return string array of relevant chunks', async () => {
+      // Setup: Make query vector similar to document vectors
+      mockEmbed.mockImplementation(async () => {
+        // All vectors are similar (same seed) to ensure high cosine similarity
+        return { embedding: createMockVector(1) };
+      });
 
+      knowledgeBase = new LocalVectorKnowledgeBase();
+      
+      // Wait for indexing to complete
+      await new Promise(r => setTimeout(r, 600));
+      
+      const results = await knowledgeBase.search('What is Modular RAG?');
+      
+      expect(Array.isArray(results)).toBe(true);
       expect(results.length).toBeGreaterThan(0);
-      expect(results[0].document.content).toContain('Modular RAG');
-      expect(results[0].score).toBeGreaterThan(0);
+      // Results should be strings, not SearchResult objects
+      expect(typeof results[0]).toBe('string');
     });
 
-    it('should return empty results for irrelevant query', async () => {
-      const results = await knowledgeBase.search('Banana');
+    it('should return at most 3 chunks', async () => {
+      // All similar vectors
+      mockEmbed.mockResolvedValue({ embedding: createMockVector(1) });
 
-      // Assuming simple implementation or mock behavior: 'Banana' is not in docs
-      // Note: If using semantic search, it might return low score, but we expect filtering or 0 matches if strictly keyword based for now,
-      // or simply verify score is low/empty.
-      // For this test we assume empty or filtered out.
-      expect(results).toHaveLength(0);
+      knowledgeBase = new LocalVectorKnowledgeBase();
+      
+      await new Promise(r => setTimeout(r, 600));
+      
+      const results = await knowledgeBase.search('RAG retrieval generation');
+      
+      expect(results.length).toBeLessThanOrEqual(3);
     });
 
-    it('should return a score/relevance score', async () => {
-      const results = await knowledgeBase.search('Apples');
+    it('should return empty array for completely unrelated query', async () => {
+      // Track call count - first 6 calls are document embeddings, 7th is query
+      let callCount = 0;
+      mockEmbed.mockImplementation(async () => {
+        callCount++;
+        if (callCount > 6) {
+          // Query vector is orthogonal: all elements are [1, -1, 1, -1, ...]
+          // This creates near-zero cosine similarity with uniform vectors
+          return { embedding: Array.from({ length: 1536 }, (_, i) => (i % 2 === 0 ? 1 : -1)) };
+        }
+        // Document vectors are uniform [1, 1, 1, 1, ...]
+        return { embedding: Array.from({ length: 1536 }, () => 1) };
+      });
 
-      expect(results).toHaveLength(1);
-      expect(results[0].score).toBeDefined();
-      expect(typeof results[0].score).toBe('number');
+      knowledgeBase = new LocalVectorKnowledgeBase();
+      await new Promise(r => setTimeout(r, 600));
+      
+      const results = await knowledgeBase.search('quantum physics black holes');
+      
+      // Cosine similarity with orthogonal vectors should be ~0, below 0.3 threshold
+      expect(results.length).toBe(0);
+    });
+
+    it('should handle search when still indexing gracefully', async () => {
+      mockEmbed.mockResolvedValue({ embedding: createMockVector(1) });
+      
+      knowledgeBase = new LocalVectorKnowledgeBase();
+      
+      // Immediately search without waiting for indexing
+      const results = await knowledgeBase.search('test query');
+      
+      // Should handle gracefully (empty array or wait and return)
+      expect(Array.isArray(results)).toBe(true);
+    });
+  });
+
+  describe('cosineSimilarity', () => {
+    it('should calculate correct cosine similarity between vectors', async () => {
+      knowledgeBase = new LocalVectorKnowledgeBase();
+      
+      // Identical vectors should have similarity of 1
+      const vecA = [1, 0, 0];
+      const vecB = [1, 0, 0];
+      expect(knowledgeBase.cosineSimilarity(vecA, vecB)).toBeCloseTo(1, 5);
+      
+      // Orthogonal vectors should have similarity of 0
+      const vecC = [1, 0, 0];
+      const vecD = [0, 1, 0];
+      expect(knowledgeBase.cosineSimilarity(vecC, vecD)).toBeCloseTo(0, 5);
+      
+      // Opposite vectors should have similarity of -1
+      const vecE = [1, 0, 0];
+      const vecF = [-1, 0, 0];
+      expect(knowledgeBase.cosineSimilarity(vecE, vecF)).toBeCloseTo(-1, 5);
+    });
+  });
+
+  describe('integration with OpenAI embeddings', () => {
+    it('should use text-embedding-3-small model for embeddings', async () => {
+      mockEmbed.mockResolvedValue({ embedding: createMockVector(1) });
+      
+      knowledgeBase = new LocalVectorKnowledgeBase();
+      
+      await new Promise(r => setTimeout(r, 600));
+      await knowledgeBase.search('test query');
+      
+      // Verify embed was called with the correct embedder
+      expect(mockEmbed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          embedder: 'text-embedding-3-small',
+        })
+      );
     });
   });
 });

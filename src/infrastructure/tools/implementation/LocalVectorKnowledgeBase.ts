@@ -1,85 +1,256 @@
+import fs from 'fs';
+import path from 'path';
+import { genkit } from 'genkit';
+import { openAI, textEmbedding3Small } from 'genkitx-openai';
+
+// Initialize Genkit with OpenAI Plugin for Embeddings
+const ai = genkit({
+  plugins: [
+    openAI({ apiKey: process.env.OPENAI_API_KEY })
+  ],
+});
+
+interface DocumentChunk {
+  id: number;
+  text: string;
+  vector?: number[];
+}
+
+/**
+ * Extracts the embedding vector from the Genkit embed result.
+ * Handles different possible return formats from the API.
+ */
+function extractEmbedding(result: unknown): number[] | null {
+  // Log the raw result for debugging
+  console.log('🔬 [RAG] Raw embed result type:', typeof result);
+  console.log('🔬 [RAG] Raw embed result:', JSON.stringify(result, null, 2)?.substring(0, 500));
+  
+  // Case 1: Direct array of numbers
+  if (Array.isArray(result)) {
+    if (typeof result[0] === 'number') {
+      return result as number[];
+    }
+    // Case 2: Array of objects with embedding property
+    if (result[0] && typeof result[0] === 'object' && 'embedding' in result[0]) {
+      return (result[0] as { embedding: number[] }).embedding;
+    }
+  }
+  
+  // Case 3: Object with embedding property
+  if (result && typeof result === 'object' && 'embedding' in result) {
+    return (result as { embedding: number[] }).embedding;
+  }
+  
+  // Case 4: Object with data array containing embedding
+  if (result && typeof result === 'object' && 'data' in result) {
+    const data = (result as { data: Array<{ embedding: number[] }> }).data;
+    if (Array.isArray(data) && data[0]?.embedding) {
+      return data[0].embedding;
+    }
+  }
+  
+  console.error('❌ [RAG] Could not extract embedding from result');
+  return null;
+}
+
 /**
  * LocalVectorKnowledgeBase
- *
- * Implementation of KnowledgeBase using local in-memory vector search (simulated for now).
+ * 
+ * Real RAG implementation using OpenAI text-embedding-3-small for vectorization.
+ * Reads rag_survey.md, chunks it, embeds it, and stores vectors in memory.
+ * Search uses Cosine Similarity between query vector and document vectors.
  */
+export class LocalVectorKnowledgeBase {
+  private chunks: DocumentChunk[] = [];
+  private isIndexed: boolean = false;
+  private readonly docsPath: string;
 
-import {
-  KnowledgeBase,
-  Document,
-  SearchResult,
-  KnowledgeBaseSearchOptions,
-} from '../../../core/domain/ports/KnowledgeBase';
-
-export class LocalVectorKnowledgeBase implements KnowledgeBase {
-  constructor(private documents: Document[] = []) {}
-
-  async search(
-    query: string,
-    options?: KnowledgeBaseSearchOptions
-  ): Promise<SearchResult[]> {
-    const limit = options?.limit ?? 5;
-    const minScore = options?.minScore ?? 0.0;
-
-    console.log(`[RAG] Searching for query: "${query}" (limit=${limit}, minScore=${minScore})`);
-
-    // Simple keyword search simulation
-    // In a real implementation, this would compute cosine similarity between query and document embeddings
-    const results: SearchResult[] = this.documents
-      .map((doc) => {
-        const score = this.calculateRelevance(query, doc.content);
-        return {
-          document: doc,
-          score,
-        };
-      })
-      .map(res => {
-          if (res.score > 0) console.log(`[RAG] Candidate: ${res.document.metadata.source} (Score: ${res.score.toFixed(4)})`);
-          return res;
-      })
-      .filter((result) => result.score > minScore)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
-
-    console.log(`[RAG] Found ${results.length} results.`);
-    return results;
-  }
-
-  async index(documents: Document[]): Promise<void> {
-    this.documents = [...this.documents, ...documents];
-  }
-
-  async remove(documentIds: string[]): Promise<void> {
-    this.documents = this.documents.filter(
-      (doc) => !documentIds.includes(doc.id)
+  constructor() {
+    console.log('🧠 [RAG] ====================================');
+    console.log('🧠 [RAG] LocalVectorKnowledgeBase Initialized');
+    console.log('🧠 [RAG] Using OpenAI text-embedding-3-small');
+    console.log('🧠 [RAG] ====================================');
+    
+    this.docsPath = path.join(
+      process.cwd(),
+      'src/infrastructure/data/docs/rag_survey.md'
     );
-  }
-
-  async clear(): Promise<void> {
-    this.documents = [];
+    
+    console.log(`📁 [RAG] Doc path: ${this.docsPath}`);
+    console.log(`🔑 [RAG] OpenAI Key present: ${process.env.OPENAI_API_KEY ? 'YES (' + process.env.OPENAI_API_KEY.substring(0, 10) + '...)' : 'NO ⚠️'}`);
+    
+    // Trigger async indexing (Fire & Forget)
+    this.indexDocuments().catch(err => {
+        console.error('❌ [RAG Init Error]', err);
+    });
   }
 
   /**
-   * Calculates a simple relevance score based on keyword presence.
-   * TODO: Replace with real vector embedding cosine similarity.
+   * 1. Ingest & Vectorize Process
    */
-  private calculateRelevance(query: string, content: string): number {
-    const normalize = (text: string) => text.toLowerCase();
-    const queryTerm = normalize(query);
-    const contentText = normalize(content);
+  private async indexDocuments() {
+    console.log('');
+    console.log('🔄 [RAG] ========== STARTING VECTORIZATION ==========');
+    const startTime = Date.now();
+    
+    try {
+        if (!fs.existsSync(this.docsPath)) {
+            console.error(`❌ [RAG] Doc not found at: ${this.docsPath}`);
+            return;
+        }
+        console.log('✅ [RAG] Document file exists');
 
-    if (contentText.includes(queryTerm)) {
-      return 0.9; // High score for exact match
+        const content = fs.readFileSync(this.docsPath, 'utf-8');
+        console.log(`📖 [RAG] Document loaded: ${content.length} characters`);
+        
+        // Simple chunking by paragraph (double newline)
+        const rawChunks = content.split(/\n\s*\n/).filter(c => c.trim().length > 0);
+        console.log(`📄 [RAG] Document split into ${rawChunks.length} chunks`);
+        console.log(`📊 [RAG] Average chunk size: ${Math.round(content.length / rawChunks.length)} chars`);
+
+        console.log('');
+        console.log('🚀 [RAG] Starting embedding generation...');
+        console.log('📡 [RAG] Calling OpenAI API for each chunk...');
+        
+        let successCount = 0;
+        let errorCount = 0;
+        
+        // Generate Embeddings in parallel
+        this.chunks = await Promise.all(
+            rawChunks.map(async (text, index) => {
+                try {
+                    const result = await ai.embed({
+                        embedder: textEmbedding3Small,
+                        content: text
+                    });
+                    
+                    const embedding = extractEmbedding(result);
+                    
+                    if (embedding) {
+                        successCount++;
+                        if (successCount <= 3 || successCount % 20 === 0) {
+                            console.log(`  ✓ [RAG] Chunk ${index + 1}/${rawChunks.length} embedded (${embedding.length} dims)`);
+                        }
+                        
+                        return {
+                            id: index,
+                            text: text.trim(),
+                            vector: embedding,
+                        };
+                    } else {
+                        errorCount++;
+                        return { id: index, text: text.trim() };
+                    }
+                } catch (e) {
+                    errorCount++;
+                    console.warn(`  ⚠️ [RAG] Failed to embed chunk ${index}:`, e instanceof Error ? e.message : e);
+                    return { id: index, text: text.trim() };
+                }
+            })
+        );
+
+        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+        const vectorizedCount = this.chunks.filter(c => c.vector).length;
+        
+        console.log('');
+        console.log('🏁 [RAG] ========== VECTORIZATION COMPLETE ==========');
+        console.log(`✅ [RAG] Vectors created: ${vectorizedCount}/${rawChunks.length}`);
+        console.log(`❌ [RAG] Errors: ${errorCount}`);
+        console.log(`⏱️  [RAG] Duration: ${duration}s`);
+        console.log('🟢 [RAG] Vector Store is READY for queries!');
+        console.log('====================================================');
+        console.log('');
+        
+        this.isIndexed = true;
+
+    } catch (error) {
+        console.error('❌ [RAG] Critical Indexing Error:', error);
+    }
+  }
+
+  /**
+   * 2. Semantic Search
+   */
+  async search(query: string): Promise<string[]> {
+    console.log('');
+    console.log('🔍 [RAG] ========== SEARCH REQUEST ==========');
+    console.log(`🔍 [RAG] Query: "${query}"`);
+    console.log(`📊 [RAG] Index Status: ${this.isIndexed ? 'READY' : 'NOT READY'}`);
+    console.log(`📦 [RAG] Chunks in memory: ${this.chunks.length}`);
+    console.log(`📦 [RAG] Chunks with vectors: ${this.chunks.filter(c => c.vector).length}`);
+    
+    if (!this.isIndexed) {
+        console.warn('⏳ [RAG] System is still indexing. Waiting 500ms...');
+        await new Promise(r => setTimeout(r, 500));
+        if (!this.isIndexed) {
+            console.warn('⚠️ [RAG] Still not ready. Returning empty results.');
+            return [];
+        }
     }
 
-    // Check for partial word matches (very basic)
-    const queryWords = queryTerm.split(/\s+/);
-    const matches = queryWords.filter((word) => contentText.includes(word));
+    try {
+        console.log('📡 [RAG] Embedding query via OpenAI...');
+        const queryStart = Date.now();
+        
+        // Embed the user query
+        const result = await ai.embed({
+            embedder: textEmbedding3Small,
+            content: query
+        });
+        
+        const queryVector = extractEmbedding(result);
+        
+        if (!queryVector) {
+            console.error('❌ [RAG] Failed to extract query embedding');
+            return [];
+        }
+        
+        console.log(`✅ [RAG] Query embedded (${queryVector.length} dims) in ${Date.now() - queryStart}ms`);
 
-    if (matches.length > 0) {
-      return 0.5 * (matches.length / queryWords.length);
+        // Calculate Cosine Similarity
+        console.log('🧮 [RAG] Calculating cosine similarity...');
+        const scoredChunks = this.chunks
+            .filter(chunk => chunk.vector)
+            .map(chunk => ({
+                text: chunk.text,
+                score: this.cosineSimilarity(queryVector, chunk.vector!)
+            }))
+            .sort((a, b) => b.score - a.score);
+
+        // Show top 5 matches for debugging
+        console.log('');
+        console.log('📊 [RAG] Top 5 Similarity Scores:');
+        scoredChunks.slice(0, 5).forEach((match, i) => {
+            const preview = match.text.substring(0, 50).replace(/\n/g, ' ');
+            console.log(`  ${i + 1}. Score: ${match.score.toFixed(4)} | "${preview}..."`);
+        });
+        
+        // Return Top 3 relevant chunks (Score > 0.3 threshold)
+        const results = scoredChunks
+            .filter(match => match.score > 0.3)
+            .slice(0, 3)
+            .map(match => match.text);
+            
+        console.log('');
+        console.log(`🎯 [RAG] Returning ${results.length} results (threshold > 0.3)`);
+        console.log('==========================================');
+        console.log('');
+
+        return results;
+
+    } catch (error) {
+        console.error('❌ [RAG] Search Error:', error);
+        return [];
     }
+  }
 
-    return 0;
+  /**
+   * Math Helper: Cosine Similarity
+   */
+  cosineSimilarity(vecA: number[], vecB: number[]): number {
+    const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+    const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+    const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+    return dotProduct / (magnitudeA * magnitudeB);
   }
 }

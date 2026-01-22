@@ -197,7 +197,7 @@ export class GenkitAgent implements GenerativeAgent {
             
             // Execute the tool logic (we can use the implementation map or just direct calls like before)
             // Even though we defined the tool with implementation, we can call our ports directly here for the manual loop.
-            let toolResultContent: any = { result: [] };
+            let toolResultContent: { result: unknown } = { result: [] };
 
             if (toolRequest.toolName === 'web_search' && this.webSearch) {
                 const result = await this.webSearch.search(toolRequest.input.query as string);

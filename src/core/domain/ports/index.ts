@@ -7,9 +7,6 @@ export {
 
 export {
   type KnowledgeBase,
-  type Document,
-  type SearchResult,
-  type KnowledgeBaseSearchOptions,
 } from './KnowledgeBase';
 
 export {

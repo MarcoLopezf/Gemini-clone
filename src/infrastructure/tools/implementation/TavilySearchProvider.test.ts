@@ -1,21 +1,23 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TavilySearchProvider } from './TavilySearchProvider';
+
+// Mock the tavily module
+const mockSearch = vi.fn();
+
+vi.mock('@tavily/core', () => ({
+  tavily: vi.fn(() => ({
+    search: mockSearch,
+  })),
+  TavilyClient: vi.fn(),
+}));
 
 describe('TavilySearchProvider', () => {
   let provider: TavilySearchProvider;
   const apiKey = 'test-api-key';
 
-  // Mock global fetch
-  const fetchMock = vi.fn();
-  global.fetch = fetchMock;
-
   beforeEach(() => {
+    vi.clearAllMocks();
     provider = new TavilySearchProvider(apiKey);
-    fetchMock.mockReset();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it('should call Tavily API with correct parameters', async () => {
@@ -35,29 +37,16 @@ describe('TavilySearchProvider', () => {
       query: query,
     };
 
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    mockSearch.mockResolvedValue(mockResponse);
 
     // Act
     await provider.search(query, { searchDepth: 'basic' });
 
     // Assert
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        api_key: apiKey,
-        query: query,
-        search_depth: 'basic',
-        include_answer: false, // Default or specific option
-        limit: 5,
-      }),
-    });
+    expect(mockSearch).toHaveBeenCalledTimes(1);
+    expect(mockSearch).toHaveBeenCalledWith(query, expect.objectContaining({
+      searchDepth: 'basic',
+    }));
   });
 
   it('should parse response and return WebSearchResponse', async () => {
@@ -75,10 +64,7 @@ describe('TavilySearchProvider', () => {
       query: query,
     };
 
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => mockResponse,
-    });
+    mockSearch.mockResolvedValue(mockResponse);
 
     // Act
     const result = await provider.search(query);
@@ -92,14 +78,9 @@ describe('TavilySearchProvider', () => {
 
   it('should handle API errors gracefully', async () => {
     // Arrange
-    fetchMock.mockResolvedValue({
-      ok: false,
-      statusText: 'Unauthorized',
-    });
+    mockSearch.mockRejectedValue(new Error('API Error: Unauthorized'));
 
     // Act & Assert
-    await expect(provider.search('fail')).rejects.toThrow(
-      'Tavily API error: Unauthorized'
-    );
+    await expect(provider.search('fail')).rejects.toThrow('API Error: Unauthorized');
   });
 });

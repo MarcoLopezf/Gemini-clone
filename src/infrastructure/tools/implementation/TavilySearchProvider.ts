@@ -37,11 +37,17 @@ export class TavilySearchProvider implements WebSearch {
       // Map SDK response to our domain WebSearchResponse
       // SDK response structure is { results: [...], answer: string, query: string, ... }
       
-      const results: WebSearchResult[] = response.results.map((item: any) => ({
+      const results: WebSearchResult[] = response.results.map((item: {
+        title: string;
+        url: string;
+        content: string;
+        score?: number;
+        published_date?: string;
+      }) => ({
         title: item.title,
         url: item.url,
         content: item.content,
-        score: item.score,
+        score: item.score ?? 0,
         publishedDate: item.published_date,
       }));
 
