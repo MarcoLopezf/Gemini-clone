@@ -6,16 +6,12 @@
  */
 
 // Entities
-export { Message, Conversation } from './entities';
-export type {
-  MessageProps,
-  ToolCall,
-  ToolResult,
-  ConversationProps,
-} from './entities';
+export type { Message, MessageRole } from './entities';
+export { Conversation } from './entities';
 
 // Value Objects
-export { MessageRole, MessageContent, MESSAGE_ROLES } from './value-objects';
+export { MessageContent, MESSAGE_ROLES } from './value-objects';
+export { MessageRole as MessageRoleVO } from './value-objects';
 export type { MessageRoleType } from './value-objects';
 
 // Ports (Interfaces)

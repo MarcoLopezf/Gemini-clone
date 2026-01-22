@@ -1,117 +1,30 @@
 /**
- * Conversation Entity (Aggregate Root)
+ * Conversation Aggregate Root
  *
- * Represents a conversation containing multiple messages.
- * Acts as the aggregate root for the conversation aggregate.
+ * Manages a collection of messages in a conversation.
  */
 
-import { Message } from './Message';
-
-export interface ConversationProps {
-  id: string;
-  messages: Message[];
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { Message, MessageRole } from './Message';
 
 export class Conversation {
   readonly id: string;
-  private _messages: Message[];
-  readonly createdAt: Date;
-  private _updatedAt: Date;
+  private messages: Message[] = [];
 
-  private constructor(props: ConversationProps) {
-    this.id = props.id;
-    this._messages = [...props.messages];
-    this.createdAt = props.createdAt;
-    this._updatedAt = props.updatedAt;
+  constructor() {
+    this.id = crypto.randomUUID();
   }
 
-  static create(id: string): Conversation {
-    const now = new Date();
-    return new Conversation({
-      id,
-      messages: [],
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
+  addMessage(role: MessageRole, content: string): void {
+    const trimmedContent = content.trim();
 
-  static fromMessages(id: string, messages: Message[]): Conversation {
-    const now = new Date();
-    return new Conversation({
-      id,
-      messages,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  static restore(props: ConversationProps): Conversation {
-    return new Conversation(props);
-  }
-
-  get messages(): readonly Message[] {
-    return this._messages;
-  }
-
-  get updatedAt(): Date {
-    return this._updatedAt;
-  }
-
-  get messageCount(): number {
-    return this._messages.length;
-  }
-
-  get isEmpty(): boolean {
-    return this._messages.length === 0;
-  }
-
-  addMessage(message: Message): void {
-    this._messages.push(message);
-    this._updatedAt = new Date();
-  }
-
-  getLastMessage(): Message | undefined {
-    return this._messages[this._messages.length - 1];
-  }
-
-  getLastUserMessage(): Message | undefined {
-    for (let i = this._messages.length - 1; i >= 0; i--) {
-      if (this._messages[i].role.isUser()) {
-        return this._messages[i];
-      }
+    if (trimmedContent.length === 0) {
+      throw new Error('Message content cannot be empty');
     }
-    return undefined;
+
+    this.messages.push({ role, content: trimmedContent });
   }
 
-  getLastModelMessage(): Message | undefined {
-    for (let i = this._messages.length - 1; i >= 0; i--) {
-      if (this._messages[i].role.isModel()) {
-        return this._messages[i];
-      }
-    }
-    return undefined;
-  }
-
-  /**
-   * Returns the conversation history in a format suitable for LLM context
-   */
-  toHistory(): Array<{ role: string; content: string }> {
-    return this._messages
-      .filter((msg) => msg.content !== null)
-      .map((msg) => ({
-        role: msg.role.value,
-        content: msg.content!.value,
-      }));
-  }
-
-  toJSON(): Record<string, unknown> {
-    return {
-      id: this.id,
-      messages: this._messages.map((m) => m.toJSON()),
-      createdAt: this.createdAt.toISOString(),
-      updatedAt: this._updatedAt.toISOString(),
-    };
+  getHistory(): Message[] {
+    return [...this.messages];
   }
 }
