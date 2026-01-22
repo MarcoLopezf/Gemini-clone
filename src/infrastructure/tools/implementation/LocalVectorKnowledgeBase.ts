@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { genkit } from 'genkit';
 import { openAI, textEmbedding3Small } from 'genkitx-openai';
+import { semanticChunk } from '../utils/semanticChunker';
 
 // Initialize Genkit with OpenAI Plugin for Embeddings
 const ai = genkit({
@@ -77,7 +78,7 @@ export class LocalVectorKnowledgeBase {
     );
     
     console.log(`📁 [RAG] Doc path: ${this.docsPath}`);
-    console.log(`🔑 [RAG] OpenAI Key present: ${process.env.OPENAI_API_KEY ? 'YES (' + process.env.OPENAI_API_KEY.substring(0, 10) + '...)' : 'NO ⚠️'}`);
+    console.log(`🔑 [RAG] OpenAI Key present: ${process.env.OPENAI_API_KEY ? 'YES ' : 'NO ⚠️'}`);
     
     // Trigger async indexing (Fire & Forget)
     this.indexDocuments().catch(err => {
@@ -103,10 +104,14 @@ export class LocalVectorKnowledgeBase {
         const content = fs.readFileSync(this.docsPath, 'utf-8');
         console.log(`📖 [RAG] Document loaded: ${content.length} characters`);
         
-        // Simple chunking by paragraph (double newline)
-        const rawChunks = content.split(/\n\s*\n/).filter(c => c.trim().length > 0);
-        console.log(`📄 [RAG] Document split into ${rawChunks.length} chunks`);
-        console.log(`📊 [RAG] Average chunk size: ${Math.round(content.length / rawChunks.length)} chars`);
+        // Semantic chunking with overlap for better context preservation
+        const rawChunks = semanticChunk(content, {
+            maxChunkSize: 500,      // ~500 chars per chunk
+            overlapSize: 100,       // 100 chars overlap between chunks
+            preserveHeaders: true   // Keep markdown headers
+        });
+        console.log(`📄 [RAG] Document split into ${rawChunks.length} semantic chunks`);
+        console.log(`📊 [RAG] Avg chunk size: ${Math.round(content.length / rawChunks.length)} chars | Overlap: 100 chars`);
 
         console.log('');
         console.log('🚀 [RAG] Starting embedding generation...');

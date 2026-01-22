@@ -121,11 +121,11 @@ describe('LocalVectorKnowledgeBase - Real RAG with OpenAI Embeddings', () => {
     });
 
     it('should return empty array for completely unrelated query', async () => {
-      // Track call count - first 6 calls are document embeddings, 7th is query
-      let callCount = 0;
+      // Use a flag to differentiate document vs query embeddings
+      // Document embeddings happen during indexing, query embedding happens in search()
+      let indexingComplete = false;
       mockEmbed.mockImplementation(async () => {
-        callCount++;
-        if (callCount > 6) {
+        if (indexingComplete) {
           // Query vector is orthogonal: all elements are [1, -1, 1, -1, ...]
           // This creates near-zero cosine similarity with uniform vectors
           return { embedding: Array.from({ length: 1536 }, (_, i) => (i % 2 === 0 ? 1 : -1)) };
@@ -137,6 +137,8 @@ describe('LocalVectorKnowledgeBase - Real RAG with OpenAI Embeddings', () => {
       knowledgeBase = new LocalVectorKnowledgeBase();
       await new Promise(r => setTimeout(r, 600));
       
+      // Mark indexing as complete before search
+      indexingComplete = true;
       const results = await knowledgeBase.search('quantum physics black holes');
       
       // Cosine similarity with orthogonal vectors should be ~0, below 0.3 threshold
