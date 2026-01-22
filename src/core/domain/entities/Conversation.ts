@@ -7,12 +7,17 @@
 import { Message, MessageRole } from './Message';
 import { ToolCall } from '../value-objects/ToolCall';
 
+export interface ConversationSnapshot {
+  id: string;
+  messages: Message[];
+}
+
 export class Conversation {
   readonly id: string;
   private messages: Message[] = [];
 
-  constructor() {
-    this.id = crypto.randomUUID();
+  constructor(id?: string) {
+    this.id = id ?? crypto.randomUUID();
   }
 
   addMessage(role: MessageRole, content: string): void {
@@ -42,5 +47,18 @@ export class Conversation {
 
   getHistory(): Message[] {
     return [...this.messages];
+  }
+
+  toSnapshot(): ConversationSnapshot {
+    return {
+      id: this.id,
+      messages: JSON.parse(JSON.stringify(this.messages)), // Deep copy
+    };
+  }
+
+  static fromSnapshot(snapshot: ConversationSnapshot): Conversation {
+    const conversation = new Conversation(snapshot.id);
+    conversation.messages = snapshot.messages;
+    return conversation;
   }
 }
