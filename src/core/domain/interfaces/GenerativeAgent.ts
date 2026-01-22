@@ -7,5 +7,5 @@
 import { Message } from '../entities/Message';
 
 export interface GenerativeAgent {
-  generateResponse(history: Message[]): Promise<string>;
+  generateResponse(history: Message[], options?: { modelId?: string }): Promise<string>;
 }

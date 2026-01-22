@@ -8,6 +8,7 @@ export default function Home() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState('googleai/gemini-2.5-flash');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function Home() {
         body: JSON.stringify({
           messages: [...messages, userMessage],
           conversationId: conversationId,
+          modelId: selectedModel,
         }),
       });
 
@@ -53,7 +55,18 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center p-4 bg-gray-900 text-white">
       <div className="w-full max-w-2xl mb-8 text-center mt-10">
         <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-600">Gemini Clone</h1>
-        <p className="text-gray-400">Clean Architecture • RAG • Tools</p>
+        <p className="text-gray-400 mb-4">Clean Architecture • RAG • Tools</p>
+
+        <div className="flex justify-center">
+          <select
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className="bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="googleai/gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="gpt-5-nano">GPT-5 Nano (OpenAI)</option>
+          </select>
+        </div>
       </div>
 
       <div className="flex-1 w-full max-w-2xl bg-gray-800 rounded-xl border border-gray-700 p-4 mb-4 overflow-y-auto h-[60vh] shadow-2xl">

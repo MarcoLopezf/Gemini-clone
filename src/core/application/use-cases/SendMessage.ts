@@ -30,7 +30,9 @@ export class SendMessageUseCase {
 
     // 3. Call GenerativeAgent with updated history
     const history = conversation.getHistory();
-    const modelResponse = await this.generativeAgent.generateResponse(history);
+    const modelResponse = await this.generativeAgent.generateResponse(history, { 
+      modelId: request.modelId 
+    });
 
     // 4. Add model response to conversation
     conversation.addMessage('model', modelResponse);

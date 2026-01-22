@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import { SendMessageUseCase } from '../../../core/application/use-cases/SendMessage';
 import { InMemoryConversationRepository } from '../../../infrastructure/repositories/InMemoryConversationRepository';
 import { GenkitAgent } from '../../../infrastructure/ai/GenkitAgent';
@@ -23,7 +25,25 @@ if (!globalForService.useCase) {
   if (!tavilyKey) console.warn('⚠️ [System] TAVILY_API_KEY is missing');
   
   const searchTool = new TavilySearchProvider(tavilyKey);
-  const ragTool = new LocalVectorKnowledgeBase(); // Starts empty for now
+  const ragTool = new LocalVectorKnowledgeBase();
+  
+  // Load RAG documents
+  try {
+    const docPath = path.join(process.cwd(), 'src/infrastructure/data/docs/rag_survey.md');
+    if (fs.existsSync(docPath)) {
+        const content = fs.readFileSync(docPath, 'utf-8');
+        ragTool.index([{
+            id: 'rag_survey',
+            content: content,
+            metadata: { source: 'rag_survey.md' }
+        }]);
+        console.log('📚 [System] RAG Knowledge Base loaded.');
+    } else {
+        console.warn('⚠️ [System] RAG document not found at:', docPath);
+    }
+  } catch (err) {
+      console.error('❌ [System] Failed to load RAG docs:', err);
+  }
   
   // Agent with tools
   const agent = new GenkitAgent(searchTool, ragTool);
@@ -39,7 +59,7 @@ const repo = globalForService.repo;
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { messages, conversationId } = body;
+    const { messages, conversationId, modelId } = body;
     
     // Basic validation
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -70,6 +90,7 @@ export async function POST(req: Request) {
     const response = await useCase.execute({
       conversationId: targetId,
       content: lastMessage.content,
+      modelId: modelId
     });
 
     return NextResponse.json({

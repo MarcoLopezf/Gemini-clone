@@ -15,10 +15,11 @@
   "dependencies": {
     "@genkit-ai/core": "^1.27.0",
     "@genkit-ai/flow": "^0.5.17",
-    "@genkit-ai/googleai": "^1.27.0",
+    "@genkit-ai/google-genai": "^1.27.0",
     "@tavily/core": "^0.7.1",
     "ai": "^6.0.48",
     "genkit": "^1.27.0",
+    "genkitx-openai": "^0.30.0",
     "next": "16.1.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",

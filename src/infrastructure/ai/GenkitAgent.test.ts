@@ -22,9 +22,8 @@ vi.mock('genkit', () => ({
   },
 }));
 
-vi.mock('@genkit-ai/googleai', () => ({
+vi.mock('@genkit-ai/google-genai', () => ({
   googleAI: () => ({}),
-  gemini15Flash: 'gemini-1.5-flash',
 }));
 
 // Mock FS with specific implementation

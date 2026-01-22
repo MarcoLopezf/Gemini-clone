@@ -33,6 +33,10 @@ export class LocalVectorKnowledgeBase implements KnowledgeBase {
           score,
         };
       })
+      .map(res => {
+          if (res.score > 0) console.log(`[RAG] Candidate: ${res.document.metadata.source} (Score: ${res.score.toFixed(4)})`);
+          return res;
+      })
       .filter((result) => result.score > minScore)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
