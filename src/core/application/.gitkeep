@@ -1,0 +1,5 @@
+# Application Layer
+
+This directory will contain the Use Cases (Application Services).
+
+Use cases orchestrate domain logic without knowing about infrastructure details.

@@ -1,0 +1,8 @@
+# Infrastructure Layer
+
+This directory will contain implementations of domain ports:
+
+- Genkit adapter (GenerativeAgent implementation)
+- Tavily adapter (WebSearch implementation)
+- In-memory vector store (KnowledgeBase implementation)
+- Next.js API handlers
