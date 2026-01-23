@@ -158,7 +158,16 @@ export class GenkitAgent implements GenerativeAgent {
 
       // 4. Handle Tools (Post-stream)
       const fullResponse = await responseStream.response;
-      const toolRequests = fullResponse.output?.toolRequests;
+      
+      // Safely parse tool requests - LLM sometimes returns plain text instead of JSON
+      let toolRequests;
+      try {
+        toolRequests = fullResponse.output?.toolRequests;
+      } catch (parseError) {
+        console.warn('⚠️ [Genkit Stream] Could not parse response output (likely plain text):', parseError);
+        // If parsing fails, treat as no tool requests (just text response)
+        return;
+      }
 
       if (!toolRequests || toolRequests.length === 0) return;
 
