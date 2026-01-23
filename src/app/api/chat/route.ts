@@ -1,90 +1,77 @@
-import { NextResponse } from 'next/server';
-import { SendMessageUseCase } from '../../../core/application/use-cases/SendMessage';
-import { InMemoryConversationRepository } from '../../../infrastructure/repositories/InMemoryConversationRepository';
 import { GenkitAgent } from '../../../infrastructure/ai/GenkitAgent';
 import { TavilySearchProvider } from '../../../infrastructure/tools/implementation/TavilySearchProvider';
 import { LocalVectorKnowledgeBase } from '../../../infrastructure/tools/implementation/LocalVectorKnowledgeBase';
-import { Conversation } from '../../../core/domain/entities/Conversation';
 
 // Singleton setup to persist memory during development hot-reloads
 const globalForService = globalThis as unknown as {
-  useCase: SendMessageUseCase;
-  repo: InMemoryConversationRepository;
+  agent: GenkitAgent;
 };
 
-if (!globalForService.useCase) {
+if (!globalForService.agent) {
   console.log('🏗️ [System] Initializing Dependencies...');
   
-  // Infrastructure
-  const repo = new InMemoryConversationRepository();
-  // Ensure we have an API key, fallback to empty string might cause runtime errors if used, 
-  // but allows build to pass. Ideally we check process.env
   const tavilyKey = process.env.TAVILY_API_KEY || '';
   if (!tavilyKey) console.warn('⚠️ [System] TAVILY_API_KEY is missing');
   
   const searchTool = new TavilySearchProvider(tavilyKey);
-  
-  // RAG Tool now auto-indexes rag_survey.md on construction using OpenAI embeddings
   const ragTool = new LocalVectorKnowledgeBase();
   console.log('📚 [System] RAG Knowledge Base initializing (async vectorization)...');
   
-  // Agent with tools
-  const agent = new GenkitAgent(searchTool, ragTool);
-
-  globalForService.repo = repo;
-  globalForService.useCase = new SendMessageUseCase(repo, agent);
+  globalForService.agent = new GenkitAgent(searchTool, ragTool);
   console.log('✅ [System] Dependencies Ready. Brain Active.');
 }
 
-const useCase = globalForService.useCase;
-const repo = globalForService.repo;
+const agent = globalForService.agent;
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { messages, conversationId, modelId } = body;
-    
+    const { messages, modelId } = body;
+
     // Basic validation
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
-        return NextResponse.json({ error: 'Messages array is mandatory' }, { status: 400 });
+      return new Response(JSON.stringify({ error: 'Messages array is mandatory' }), { 
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
 
-    const lastMessage = messages[messages.length - 1];
-    let targetId = conversationId;
+    // Convert frontend messages to domain format
+    const domainMessages = messages.map((m: { role: string; content: string }) => ({
+      role: (m.role === 'assistant' ? 'model' : 'user') as 'user' | 'model',
+      content: m.content,
+    }));
 
-    // Session Management (MVP)
-    // If no ID provided, create new. 
-    // If ID provided but not found (server restart), create new (or handle error).
-    if (!targetId) {
-       const newConv = new Conversation();
-       await repo.save(newConv);
-       targetId = newConv.id;
-    } else {
-        const exists = await repo.findById(targetId);
-        if (!exists) {
-             const newConv = new Conversation(targetId); // Try to preserve ID or create new? 
-             // Logic: If client sends an ID that doesn't exist in memory (restart), 
-             // strictly speaking we lost the history. 
-             // We'll create a new conversation with that ID to allow continuing (though context is lost).
-             await repo.save(newConv);
+    // Create streaming response
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const generator = agent.generateStream(domainMessages, { modelId });
+          for await (const chunk of generator) {
+            controller.enqueue(new TextEncoder().encode(chunk));
+          }
+          controller.close();
+        } catch (e) {
+          console.error('❌ [Stream Error]:', e);
+          controller.error(e);
         }
-    }
-
-    const response = await useCase.execute({
-      conversationId: targetId,
-      content: lastMessage.content,
-      modelId: modelId
+      }
     });
 
-    return NextResponse.json({
-      id: response.conversationId,
-      role: 'model', // Domain uses 'model', Vercel AI SDK usually expects 'assistant' but 'model' is fine if frontend adapts
-      content: response.modelResponse,
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked',
+        'Cache-Control': 'no-cache',
+      }
     });
 
   } catch (error: unknown) {
     console.error('❌ [API Error]:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal Server Error';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    return new Response(JSON.stringify({ error: errorMessage }), { 
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }

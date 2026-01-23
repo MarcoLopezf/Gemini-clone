@@ -61,6 +61,9 @@ export default function Home() {
     setInput('');
     setIsLoading(true);
 
+    // Add empty AI message placeholder for streaming
+    setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -72,16 +75,36 @@ export default function Home() {
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      if (!response.ok) throw new Error(response.statusText);
 
-      if (data.id) setConversationId(data.id);
+      // Streaming response handling
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let aiContent = '';
 
-      const aiMessage: Message = { role: 'assistant', content: data.content };
-      setMessages((prev) => [...prev, aiMessage]);
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          aiContent += chunk;
+
+          // Update the last message (AI) efficiently
+          setMessages((prev) => {
+            const newArr = [...prev];
+            newArr[newArr.length - 1] = { role: 'assistant', content: aiContent };
+            return newArr;
+          });
+        }
+      }
     } catch (error) {
       console.error(error);
-      setMessages((prev) => [...prev, { role: 'assistant', content: 'Error connecting to agent. Please try again.' }]);
+      setMessages((prev) => {
+        const newArr = [...prev];
+        newArr[newArr.length - 1] = { role: 'assistant', content: 'Error connecting to agent. Please try again.' };
+        return newArr;
+      });
     } finally {
       setIsLoading(false);
     }
@@ -311,8 +334,8 @@ export default function Home() {
                                 <span className="flex-1 text-left text-sm">{tool.name}</span>
                                 <div
                                   className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${enabledTools.includes(tool.id)
-                                      ? 'bg-emerald-500 border-emerald-500'
-                                      : 'border-gray-500'
+                                    ? 'bg-emerald-500 border-emerald-500'
+                                    : 'border-gray-500'
                                     }`}
                                 >
                                   {enabledTools.includes(tool.id) && (
