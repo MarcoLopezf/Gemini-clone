@@ -130,6 +130,10 @@ export class GenkitAgent implements GenerativeAgent {
     const systemPrompt = loadSystemPrompt();
     const targetModel = resolveModelId(options?.modelId);
 
+    console.log('🚀 [Stream] Starting generateStream');
+    console.log(`🚀 [Stream] Model: ${targetModel}`);
+    console.log(`🚀 [Stream] History length: ${history.length}`);
+
     // 1. Prepare Messages
     const messages = toGenkitMessages(history, systemPrompt);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -139,36 +143,55 @@ export class GenkitAgent implements GenerativeAgent {
 
     while (turn < maxTurns) {
       turn++;
+      console.log(`\n🔄 [Stream] === TURN ${turn}/${maxTurns} ===`);
+      console.log(`🔄 [Stream] Messages count: ${currentMessages.length}`);
+      console.log(`🔄 [Stream] Tools available: ${this.tools.length}`);
       
       // 2. Call Genkit Stream
+      console.log('📡 [Stream] Calling genkitClient.generateStream...');
       const responseStream = await genkitClient.generateStream({
         model: targetModel,
         messages: currentMessages,
         tools: this.tools.length > 0 ? this.tools : undefined,
         config: { temperature: 0.3 }
       });
+      console.log('📡 [Stream] Stream created, starting to consume chunks...');
 
       // 3. Consume the stream and Yield text
+      let chunkCount = 0;
+      let totalTextLength = 0;
       for await (const chunk of responseStream.stream) {
         const textPart = chunk.text;
         if (textPart) {
+          chunkCount++;
+          totalTextLength += textPart.length;
           yield textPart; 
         }
       }
+      console.log(`✅ [Stream] Stream consumed: ${chunkCount} chunks, ${totalTextLength} chars total`);
 
       // 4. Handle Tools (Post-stream)
+      console.log('🔍 [Stream] Checking for tool requests...');
+      
       // Safely parse response - LLM sometimes returns plain text instead of JSON
       let toolRequests;
       try {
+        console.log('🔍 [Stream] Awaiting responseStream.response...');
         const fullResponse = await responseStream.response;
+        console.log('🔍 [Stream] Got fullResponse, checking output...');
+        console.log('🔍 [Stream] fullResponse keys:', Object.keys(fullResponse));
         toolRequests = fullResponse.output?.toolRequests;
+        console.log(`🔍 [Stream] toolRequests: ${toolRequests ? toolRequests.length : 'none'}`);
       } catch (parseError) {
-        console.warn('⚠️ [Genkit Stream] Could not parse response (likely plain text):', parseError);
-        // If parsing fails, treat as no tool requests (the text was already streamed)
+        console.warn('⚠️ [Stream] Could not parse response (likely plain text):', parseError);
+        console.warn('⚠️ [Stream] Returning - text was already streamed');
         return;
       }
 
-      if (!toolRequests || toolRequests.length === 0) return;
+      if (!toolRequests || toolRequests.length === 0) {
+        console.log('✅ [Stream] No tool requests, returning');
+        return;
+      }
 
       // 5. Execute Tool Logic
       const req = toolRequests[0];
