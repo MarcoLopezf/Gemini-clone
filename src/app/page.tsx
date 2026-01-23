@@ -2,15 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-
-// Mock data for sidebar chats
-const mockChats = [
-  { id: '1', title: 'RAG Architecture Discussion', date: 'Today' },
-  { id: '2', title: 'Web Search Integration', date: 'Today' },
-  { id: '3', title: 'Clean Architecture Patterns', date: 'Yesterday' },
-  { id: '4', title: 'TypeScript Best Practices', date: 'Yesterday' },
-  { id: '5', title: 'Gemini API Setup', date: 'Last week' },
-];
+type ChatHistory = { id: string; title: string; messageCount: number };
 
 // Available tools
 const availableTools = [
@@ -33,7 +25,7 @@ export default function Home() {
   const [enabledTools, setEnabledTools] = useState<string[]>(['web_search', 'knowledge_base']);
   const [showToolsDropdown, setShowToolsDropdown] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeChat, setActiveChat] = useState<string | null>(null);
+  const [history, setHistory] = useState<ChatHistory[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -51,6 +43,31 @@ export default function Home() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Fetch conversation history
+  useEffect(() => {
+    fetch('/api/chat')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setHistory(data);
+      })
+      .catch(console.error);
+  }, [messages.length]); // Refresh when messages change
+
+  // Load a conversation
+  const loadConversation = async (id: string) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/chat?id=${id}`);
+      const data = await res.json();
+      setMessages(data.messages || []);
+      setConversationId(data.id);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,7 +136,7 @@ export default function Home() {
   const startNewChat = () => {
     setMessages([]);
     setConversationId(null);
-    setActiveChat(null);
+    setInput('');
   };
 
   const selectedModelObj = models.find((m) => m.id === selectedModel);
@@ -147,21 +164,28 @@ export default function Home() {
 
         {/* Chat List */}
         <div className="flex-1 overflow-y-auto py-2">
-          {mockChats.map((chat, index) => (
-            <div key={chat.id}>
-              {index === 0 || mockChats[index - 1].date !== chat.date ? (
-                <div className="px-4 py-2 text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                  {chat.date}
-                </div>
-              ) : null}
-              <button
-                onClick={() => setActiveChat(chat.id)}
-                className={`chat-item w-full text-left px-4 py-3 ${activeChat === chat.id ? 'active' : ''}`}
-              >
-                <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{chat.title}</p>
-              </button>
+          {history.length === 0 ? (
+            <div className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-sm">No conversations yet</p>
+              <p className="text-xs mt-1">Start a new chat below</p>
             </div>
-          ))}
+          ) : (
+            <>
+              <div className="px-4 py-2 text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                Recent
+              </div>
+              {history.map((chat) => (
+                <button
+                  key={chat.id}
+                  onClick={() => loadConversation(chat.id)}
+                  className={`chat-item w-full text-left px-4 py-3 ${conversationId === chat.id ? 'active' : ''}`}
+                >
+                  <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{chat.title}</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{chat.messageCount} messages</p>
+                </button>
+              ))}
+            </>
+          )}
         </div>
 
         {/* Sidebar Footer */}

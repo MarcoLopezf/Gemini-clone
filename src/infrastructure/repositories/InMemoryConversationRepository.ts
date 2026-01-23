@@ -35,4 +35,14 @@ export class InMemoryConversationRepository implements ConversationRepository {
     await this.save(conversation);
     return conversation;
   }
+
+  async findAll(): Promise<Conversation[]> {
+    // Return array of conversations (newest first based on insertion order)
+    const conversations: Conversation[] = [];
+    for (const snapshot of this.store.values()) {
+      conversations.push(Conversation.fromSnapshot(snapshot));
+    }
+    return conversations.reverse();
+  }
 }
+
