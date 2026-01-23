@@ -1,1 +1,153 @@
 @import "tailwindcss";
+
+:root {
+    /* Color Palette - Dark Theme with Warm Accents */
+    --bg-primary: #0f0f0f;
+    --bg-secondary: #1a1a1a;
+    --bg-tertiary: #252525;
+    --bg-hover: #2d2d2d;
+    --bg-input: #1e1e1e;
+
+    --text-primary: #e5e5e5;
+    --text-secondary: #a3a3a3;
+    --text-muted: #737373;
+
+    --accent-primary: #10b981;
+    /* Emerald */
+    --accent-secondary: #3b82f6;
+    /* Blue */
+    --accent-gradient-start: #10b981;
+    --accent-gradient-end: #3b82f6;
+
+    --border-subtle: #2a2a2a;
+    --border-medium: #3a3a3a;
+
+    /* Shadows */
+    --shadow-glow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* Animations */
+@keyframes pulse-subtle {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.7;
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.animate-pulse-subtle {
+    animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.animate-shimmer {
+    background: linear-gradient(90deg,
+            var(--bg-tertiary) 0%,
+            var(--bg-hover) 50%,
+            var(--bg-tertiary) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
+/* Gradient Text */
+.gradient-text {
+    background: linear-gradient(135deg, var(--accent-gradient-start), var(--accent-gradient-end));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Glass Effect */
+.glass {
+    background: rgba(26, 26, 26, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+/* Input Focus Ring */
+.focus-ring:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+/* Hover Transitions */
+.hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-glow);
+}
+
+/* Message Bubble Styles */
+.message-user {
+    background: linear-gradient(135deg, #1e3a2f, #1a3a4a);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.message-assistant {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-subtle);
+}
+
+/* Sidebar Chat Item */
+.chat-item {
+    transition: background-color 0.15s ease;
+}
+
+.chat-item:hover {
+    background-color: var(--bg-hover);
+}
+
+.chat-item.active {
+    background-color: var(--bg-tertiary);
+    border-left: 2px solid var(--accent-primary);
+}
+
+/* Tool Badge */
+.tool-badge {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(59, 130, 246, 0.15));
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.tool-badge.active {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(59, 130, 246, 0.3));
+    border-color: var(--accent-primary);
+}
