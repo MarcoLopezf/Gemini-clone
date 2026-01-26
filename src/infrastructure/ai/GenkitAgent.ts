@@ -20,7 +20,8 @@ import {
   executeToolManually,
   toGenkitMessages, 
   resolveModelId,
-  type ToolDependencies 
+  type ToolDependencies,
+  type GenkitClientType
 } from './genkit';
 import { loadSystemPrompt } from './prompts/PromptLoader';
 
@@ -28,13 +29,17 @@ export class GenkitAgent implements GenerativeAgent {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private readonly tools: any[];
   private readonly toolDeps: ToolDependencies;
+  private readonly ai: GenkitClientType;
 
   constructor(
     webSearch?: WebSearch,
-    knowledgeBase?: KnowledgeBase
+    knowledgeBase?: KnowledgeBase,
+    aiClient?: GenkitClientType // Optional: inject custom Genkit client for testing
   ) {
     this.toolDeps = { webSearch, knowledgeBase };
-    this.tools = registerTools(genkitClient, this.toolDeps);
+    this.ai = aiClient || genkitClient;
+    this.tools = registerTools(this.ai, this.toolDeps);
+    console.log(`🔧 [Agent] Registered ${this.tools.length} tools`);
   }
   
 
@@ -60,7 +65,7 @@ export class GenkitAgent implements GenerativeAgent {
     
     while (true) {
 
-      const response = await genkitClient.generate({
+      const response = await this.ai.generate({
         model: targetModel,
         messages: currentMessages,
         tools: this.tools.length > 0 ? this.tools : undefined,
@@ -131,14 +136,16 @@ export class GenkitAgent implements GenerativeAgent {
     const targetModel = resolveModelId(options?.modelId);
 
     // Filter tools based on activeTools option
-    const enabledTools = this.tools.filter(tool => 
-      !options?.activeTools || options.activeTools.includes(tool.name)
-    );
+    // Tool objects from defineTool have the name in __action.name
+    const enabledTools = this.tools.filter(tool => {
+      const toolName = tool.__action?.name;
+      return !options?.activeTools || options.activeTools.includes(toolName);
+    });
 
     console.log('🚀 [Stream] Starting generateStream');
     console.log(`🚀 [Stream] Model: ${targetModel}`);
     console.log(`🚀 [Stream] History length: ${history.length}`);
-    console.log(`🔧 [Stream] Active Tools: ${enabledTools.map((t: {name: string}) => t.name).join(', ') || 'None'}`);
+    console.log(`🔧 [Stream] Active Tools: ${enabledTools.map((t: {__action?: {name: string}}) => t.__action?.name).join(', ') || 'None'}`);
 
     // 1. Prepare Messages
     const messages = toGenkitMessages(history, systemPrompt);
@@ -154,8 +161,8 @@ export class GenkitAgent implements GenerativeAgent {
       console.log(`🔄 [Stream] Tools available: ${enabledTools.length}`);
       
       // 2. Call Genkit Stream
-      console.log('📡 [Stream] Calling genkitClient.generateStream...');
-      const responseStream = await genkitClient.generateStream({
+      console.log('📡 [Stream] Calling this.ai.generateStream...');
+      const responseStream = await this.ai.generateStream({
         model: targetModel,
         messages: currentMessages,
         tools: enabledTools.length > 0 ? enabledTools : undefined,
