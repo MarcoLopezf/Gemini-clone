@@ -19,6 +19,7 @@ describe('SendMessageUseCase', () => {
       findById: vi.fn(),
       save: vi.fn(),
       create: vi.fn(),
+      findAll: vi.fn().mockResolvedValue([]),
     };
 
     mockGenerativeAgent = {

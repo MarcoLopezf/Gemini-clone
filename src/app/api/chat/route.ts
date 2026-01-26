@@ -72,7 +72,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { messages, modelId, conversationId } = body;
+    const { messages, modelId, conversationId, activeTools } = body;
 
     // Basic validation
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
       async start(controller) {
         try {
           let fullResponse = '';
-          const generator = agent.generateStream(domainMessages, { modelId });
+          const generator = agent.generateStream(domainMessages, { modelId, activeTools });
           
           for await (const chunk of generator) {
             controller.enqueue(new TextEncoder().encode(chunk));

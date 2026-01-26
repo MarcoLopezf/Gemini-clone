@@ -89,6 +89,7 @@ export default function Home() {
           messages: [...messages, userMessage],
           conversationId: conversationId,
           modelId: selectedModel,
+          activeTools: enabledTools,
         }),
       });
 
@@ -139,7 +140,7 @@ export default function Home() {
     setInput('');
   };
 
-  const selectedModelObj = models.find((m) => m.id === selectedModel);
+  // Note: Model icon/name can be derived from models array when needed
 
   return (
     <div className="flex h-screen" style={{ background: 'var(--bg-primary)' }}>
@@ -284,7 +285,7 @@ export default function Home() {
           <div className="max-w-3xl mx-auto">
             <form onSubmit={handleSubmit}>
               <div
-                className="rounded-2xl overflow-hidden"
+                className="rounded-2xl"
                 style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}
               >
                 {/* Text Input */}
@@ -340,7 +341,7 @@ export default function Home() {
 
                       {showToolsDropdown && (
                         <div
-                          className="absolute bottom-full left-0 mb-2 w-56 rounded-xl shadow-xl overflow-hidden"
+                          className="absolute bottom-full left-0 mb-2 w-56 rounded-xl shadow-xl overflow-hidden z-50"
                           style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)' }}
                         >
                           <div className="p-2">

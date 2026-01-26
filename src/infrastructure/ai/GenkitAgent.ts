@@ -126,13 +126,19 @@ export class GenkitAgent implements GenerativeAgent {
   /**
    * Streaming response generator - yields text chunks as they arrive
    */
-  async *generateStream(history: Message[], options?: { modelId?: string }): AsyncGenerator<string, void, unknown> {
+  async *generateStream(history: Message[], options?: { modelId?: string; activeTools?: string[] }): AsyncGenerator<string, void, unknown> {
     const systemPrompt = loadSystemPrompt();
     const targetModel = resolveModelId(options?.modelId);
+
+    // Filter tools based on activeTools option
+    const enabledTools = this.tools.filter(tool => 
+      !options?.activeTools || options.activeTools.includes(tool.name)
+    );
 
     console.log('🚀 [Stream] Starting generateStream');
     console.log(`🚀 [Stream] Model: ${targetModel}`);
     console.log(`🚀 [Stream] History length: ${history.length}`);
+    console.log(`🔧 [Stream] Active Tools: ${enabledTools.map((t: {name: string}) => t.name).join(', ') || 'None'}`);
 
     // 1. Prepare Messages
     const messages = toGenkitMessages(history, systemPrompt);
@@ -145,14 +151,14 @@ export class GenkitAgent implements GenerativeAgent {
       turn++;
       console.log(`\n🔄 [Stream] === TURN ${turn}/${maxTurns} ===`);
       console.log(`🔄 [Stream] Messages count: ${currentMessages.length}`);
-      console.log(`🔄 [Stream] Tools available: ${this.tools.length}`);
+      console.log(`🔄 [Stream] Tools available: ${enabledTools.length}`);
       
       // 2. Call Genkit Stream
       console.log('📡 [Stream] Calling genkitClient.generateStream...');
       const responseStream = await genkitClient.generateStream({
         model: targetModel,
         messages: currentMessages,
-        tools: this.tools.length > 0 ? this.tools : undefined,
+        tools: enabledTools.length > 0 ? enabledTools : undefined,
         config: { temperature: 0.3 }
       });
       console.log('📡 [Stream] Stream created, starting to consume chunks...');
