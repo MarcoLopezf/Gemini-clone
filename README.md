@@ -169,7 +169,7 @@ Quality checks are automated:
 
 | File | Purpose |
 |------|---------|
-| `GenkitAgent.ts` | LLM orchestrator (~110 lines after refactor) |
+| `GenkitAgent.ts` | LLM orchestrator (Streaming & Tool Loop) |
 | `LocalVectorKnowledgeBase.ts` | RAG implementation with OpenAI embeddings |
 | `semanticChunker.ts` | Intelligent document chunking |
 | `TavilySearchProvider.ts` | Web search adapter |
@@ -200,29 +200,6 @@ graph LR
 | Chunk Size | ~500 chars |
 | Overlap | 100 chars |
 | Strategy | Sentence-aware (no mid-sentence cuts) |
-
----
-
-## 🔧 Technical Challenges & Solutions
-
-### 1. Async Indexing Race Condition
-**Problem**: First requests could fail if RAG indexing wasn't complete.
-
-**Solution**: Promise-based initialization guard. `search()` awaits the indexing promise.
-
-### 2. Genkit Embed Return Type
-**Problem**: `ai.embed()` return type varies across versions.
-
-**Solution**: `extractEmbedding()` helper that handles multiple formats.
-
-### 3. GenkitAgent Size (252 lines)
-**Problem**: Single file with multiple responsibilities.
-
-**Solution**: Extracted into modular components:
-- `GenkitClient.ts` - AI initialization
-- `ToolRegistry.ts` - Tool management
-- `MessageConverter.ts` - Message formatting
-- `PromptLoader.ts` - Prompt loading
 
 ---
 
