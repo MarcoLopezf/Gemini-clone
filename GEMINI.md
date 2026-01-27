@@ -32,9 +32,13 @@ The agent acts as an orchestrator using **Function Calling (Tools)** to decide b
 
 ### PHASE 3: REFACTOR & VERIFY
 1. Refactor the code if needed (clean up, optimize) while keeping tests green.
-2. Run the final verification command.
+2. Run the final verification command `pnpm verify` (Definition of Done for a FEATURE).
 
-**Definition of Done:**
+**Continuous Integration (Git Hooks):**
+- **Commit:** Lint & Typecheck are auto-verified.
+- **Push:** All tests are auto-verified.
+
+**Definition of Done (Feature Complete):**
 Run `pnpm verify`. It must result in:
 - 0 Lint errors
 - 0 Type errors

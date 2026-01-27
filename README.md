@@ -148,6 +148,12 @@ Every feature follows the **Red-Green-Refactor** cycle:
 pnpm verify  # Runs: lint → typecheck → test → build
 ```
 
+### 🛡️ Git Hooks (Husky)
+Quality checks are automated:
+- **Pre-commit**: Runs `pnpm lint` & `pnpm typecheck`
+- **Pre-push**: Runs `pnpm test:run` (Unit & AI tests)
+
+
 ### Test Coverage
 ```
 58 tests across 8 test files
